@@ -30,7 +30,7 @@ def precompute_freqs_cis(dim: int, end: int = int(32 * 1024), rope_base: float =
     Args:
         dim: 注意力头的维度 (head_dim)
         end: 最大序列长度
-        rope_base: RoPE 的基础频率，默认 1e6
+        rope_base: RoPE 的基础频率，默认 1e6.
     
     Returns:
         freqs_cos: cos 频率张量 (end, dim)

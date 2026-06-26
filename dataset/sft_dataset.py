@@ -1,6 +1,6 @@
 """
 SpongeBob SFT 数据集
-支持多轮对话，只计算 assistant 部分的 loss
+支持多轮对话，只计算 assistant 部分的loss 
 """
 import json
 import torch
