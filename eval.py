@@ -1,5 +1,5 @@
 """
-SpongeBob 模型交互式对话脚本（简化版）
+知辰模型交互式对话脚本（简化版）
 """
 import argparse
 import torch
@@ -8,7 +8,7 @@ from model.config import SpongeBobConfig
 from model.model_spongebob_pro import SpongeBobForCausalLM
 
 def main():
-    parser = argparse.ArgumentParser(description="SpongeBob模型交互对话")
+    parser = argparse.ArgumentParser(description="知辰模型交互对话")
     parser.add_argument('--model_path', default='/apdcephfs_qy4/share_302593112/huaibingxie/SpongeBob/out_sft/exp_3/h768_l12_bs128_lr0.001/global_step_5930/sft_768.pth', type=str, help="模型权重路径（.pth文件）")
     parser.add_argument('--tokenizer_path', default='./tokenizer_15k', type=str, help="Tokenizer路径")
     parser.add_argument('--model_type', default='sft', type=str, choices=['pretrain', 'sft'], help="模型类型：pretrain（文本续写）或 sft（对话）")
