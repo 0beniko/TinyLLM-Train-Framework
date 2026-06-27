@@ -170,7 +170,10 @@ torchrun --nproc_per_node=4 train/pretrain.py \
   --hidden_size 768 \
   --num_hidden_layers 12 \
   --batch_size 128 \
+  --accumulation_steps 4 \
   --learning_rate 1e-3 \
+  --dtype bfloat16 \
+  --use_compile 1 \
   --max_seq_len 512 \
   --use_swanlab 1
 ```
@@ -178,11 +181,34 @@ torchrun --nproc_per_node=4 train/pretrain.py \
 训练代码包含：
 
 - DDP 分布式初始化和 `DistributedSampler` 数据切分。
-- `torch.amp.autocast` 混合精度训练。
-- `GradScaler`、梯度裁剪和梯度累积。
+- `torch.amp.autocast` 引入 bfloat16 混合精度训练。
+- `torch.compile` 对模型前向进行动静态图编译优化，减少 Python 调度开销。
+- 梯度累积、梯度裁剪与 AdamW 参数更新，突破单卡显存对 batch size 的限制。
 - AdamW 优化器与 Warmup + Cosine Decay 学习率调度。
 - 主进程 checkpoint 保存，支持后续 resume。
 - 周期性运行中文 Benchmark，并将结果记录到 SwanLab。
+
+### 训练工程优化：AMP、torch.compile 与梯度累积
+
+在硬件显存有限的情况下，知辰没有简单降低模型结构复杂度，而是从训练工程侧进行优化，尽量在稳定性、吞吐和显存之间取得平衡。
+
+![学习率调度曲线](assets/README/learning-rate-schedule.png)
+
+| 优化项 | 实现方式 | 作用 |
+| --- | --- | --- |
+| bfloat16 AMP | `torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)` | 降低激活显存占用，提高 Tensor Core 计算吞吐，同时保留比 fp16 更大的指数范围 |
+| torch.compile | `model = torch.compile(model)` | 对前向图进行编译优化，减少 Python 解释器调度和小算子开销 |
+| 梯度累积 | `loss / accumulation_steps` 后分步反传 | 在显存不足以容纳大 batch 时，用多次 micro-batch 近似更大的全局 batch |
+| 梯度裁剪 | `clip_grad_norm_` | 降低训练早期或异常 batch 带来的梯度爆炸风险 |
+| Warmup + Cosine | `get_lr(current_step, total_steps, lr, warmup_steps)` | 训练初期平滑升温，后期余弦衰减，兼顾收敛速度与稳定性 |
+
+其中，bfloat16 AMP 是本项目训练稳定性的重要选择。相比 fp16，bfloat16 拥有更大的动态范围，在大模型训练中更不容易出现溢出；相比 fp32，则能明显降低显存占用并提升计算效率。代码中通过 `--dtype bfloat16` 控制混合精度上下文，默认在 CUDA 环境下启用 `autocast`。
+
+梯度累积用于解决“模型、序列长度和 batch size 同时增大时显存不足”的问题。每个 micro-batch 先计算 `loss / accumulation_steps` 并反向传播，累计多步梯度后再统一执行一次 optimizer step。这样可以在不改变模型结构的情况下扩大等效 batch size，使训练曲线更平滑。
+
+训练过程中会定期保存 checkpoint，并记录 loss、learning rate、global step 等信息，保证长时间训练出现中断时可以继续恢复。
+
+![训练终端与 checkpoint](assets/README/training-checkpoint-terminal.png)
 
 ## SFT 指令微调 🎯
 
@@ -225,7 +251,10 @@ torchrun --nproc_per_node=4 train/train_sft.py \
   --hidden_size 768 \
   --num_hidden_layers 12 \
   --batch_size 128 \
+  --accumulation_steps 4 \
   --learning_rate 2e-5 \
+  --dtype bfloat16 \
+  --use_compile 1 \
   --max_seq_len 512 \
   --use_swanlab 1
 ```
