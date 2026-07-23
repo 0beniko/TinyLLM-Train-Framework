@@ -259,12 +259,73 @@ torchrun --nproc_per_node=4 train/train_sft.py \
 
 如果启用 SFT 阶段生成式评估，可通过命令参数传入 Judge 模型配置。README 中不写入任何 API Key，实际使用时建议通过环境变量或本地安全配置传入密钥。
 
+### SFT Benchmark：自建指令评测与 LLM-as-Judge
+
+为了更直接观察 SFT 后模型的基础对话能力，项目额外构建了一个轻量级自建 SFT Benchmark。该 Benchmark 不追求覆盖所有复杂知识场景，而是聚焦小模型最基础、最容易暴露问题的交互能力：回答是否自然、是否符合事实、是否真正理解并执行了用户指令。
+
+评测数据通过 LLM 对预定义的 9 种类别进行 prompt 生成，共 100 条样本：
+
+| 类别 | 样本数 | 评估重点 |
+| --- | ---: | --- |
+| 开放问答 | 30 | 日常对话、常见问题回答 |
+| 基础常识 | 29 | 基础事实与生活常识 |
+| 简单指令 | 10 | 是否按用户要求执行 |
+| 简单逻辑 | 10 | 基础推理与条件判断 |
+| 上下文提取 | 5 | 从给定上下文中提取关键信息 |
+| 角色扮演 | 5 | 是否保持设定角色与语气 |
+| 简单的代码 | 5 | 基础代码理解与生成 |
+| 算术与数字 | 5 | 简单数字计算与比较 |
+| 结束语 | 1 | 对话结束场景 |
+
+评估方式采用 **LLM-as-Judge**：每个 prompt 生成 3 个候选回答，再使用 DeepSeek V3.2 快思考版本作为 Judge，从三个维度进行二值判分。
+
+| 维度 | 含义 |
+| --- | --- |
+| `fluency` | 回答是否流畅、语言是否自然 |
+| `factuality` | 回答是否准确、是否符合事实 |
+| `instruction_following` | 是否正确理解并遵循指令，回答用户真正提出的问题 |
+
+Judge Prompt 如下：
+
+```text
+请根据问题对以下回答进行评分（0-1 二值）：
+
+【问题】{question}
+【回答】{response}
+
+请从三个维度评分（0=不通过，1=通过）：
+1. fluency: 回答是否流畅、语言自然
+2. factuality: 回答是否准确、符合事实
+3. instruction_following: 是否正确理解并遵循了指令并回答用户问题
+
+请务必严格，如果无法判断，则视为不通过。
+
+以 JSON 格式输出：
+{
+  "fluency": 0 或 1,
+  "factuality": 0 或 1,
+  "instruction_following": 0 或 1
+}
+```
+
+SFT 阶段训练曲线如下，可以看到 loss 在微调早期快速下降，并在后续阶段进入相对稳定区间；learning rate 使用 warmup 后余弦衰减，ETA 曲线反映了长时间训练过程中的耗时变化。
+
+![SFT 训练曲线](assets/README/sft-training-curves.png)
+
+三维 Judge 指标用于分别观察模型回答的语言自然度、事实正确性和指令遵循能力：
+
+![SFT Judge 三维指标](assets/README/sft-judge-rubric-metrics.png)
+
+最终综合指标通过 `mean_avg3` 和 `mean_pass3` 汇总，其中 `avg3` 表示 3 个候选回答的平均通过率，`pass3` 表示 3 个候选回答中至少有 1 个通过的比例，更适合观察小模型在采样生成场景下的可用回答概率。
+
+![SFT Judge 综合指标](assets/README/sft-judge-mean-score.png)
+
 ## 评测与实验结果 📊
 
 项目在预训练和 SFT 阶段均设计了评测闭环：
 
 - 预训练阶段：使用中文因果推断/逻辑推理 Benchmark 评估模型基础理解能力。
-- SFT 阶段：使用 `benchmark/mini_bench` 抽样生成回答，并结合 Judge 模型进行对话质量评估。
+- SFT 阶段：使用自建 `benchmark/mini_bench` 抽样生成回答，并结合 DeepSeek Judge 进行对话质量评估。
 - 训练过程：使用 SwanLab 记录 loss、learning rate、ETA 和评测指标，便于观察收敛趋势。
 
 ![训练指标](assets/README/swanlab-training-metrics.png)
