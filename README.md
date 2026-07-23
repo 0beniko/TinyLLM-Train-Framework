@@ -257,6 +257,10 @@ torchrun --nproc_per_node=4 train/train_sft.py \
   --use_swanlab 1
 ```
 
+SFT 阶段训练曲线如下，可以看到 loss 在微调早期快速下降，并在后续阶段进入相对稳定区间；learning rate 使用 warmup 后余弦衰减，ETA 曲线反映了长时间训练过程中的耗时变化。
+
+![SFT 训练曲线](assets/README/sft-training-curves.png)
+
 如果启用 SFT 阶段生成式评估，可通过命令参数传入 Judge 模型配置。README 中不写入任何 API Key，实际使用时建议通过环境变量或本地安全配置传入密钥。
 
 ## 评测与实验结果 📊
@@ -319,10 +323,6 @@ Judge Prompt 如下：
   "instruction_following": 0 或 1
 }
 ```
-
-SFT 阶段训练曲线如下，可以看到 loss 在微调早期快速下降，并在后续阶段进入相对稳定区间；learning rate 使用 warmup 后余弦衰减，ETA 曲线反映了长时间训练过程中的耗时变化。
-
-![SFT 训练曲线](assets/README/sft-training-curves.png)
 
 三维 Judge 指标用于分别观察模型回答的语言自然度、事实正确性和指令遵循能力：
 
