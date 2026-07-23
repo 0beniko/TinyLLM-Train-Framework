@@ -259,6 +259,18 @@ torchrun --nproc_per_node=4 train/train_sft.py \
 
 如果启用 SFT 阶段生成式评估，可通过命令参数传入 Judge 模型配置。README 中不写入任何 API Key，实际使用时建议通过环境变量或本地安全配置传入密钥。
 
+## 评测与实验结果 📊
+
+项目在预训练和 SFT 阶段均设计了评测闭环：
+
+- 预训练阶段：使用中文因果推断/逻辑推理 Benchmark 评估模型基础理解能力。
+- SFT 阶段：使用自建 `benchmark/mini_bench` 抽样生成回答，并结合 DeepSeek Judge 进行对话质量评估。
+- 训练过程：使用 SwanLab 记录 loss、learning rate、ETA 和评测指标，便于观察收敛趋势。
+
+因此，SFT 训练曲线、三维 Judge 指标、综合 mean/pass 指标并不是单独的过程截图，而是知辰评测体系的一部分：它们分别对应“训练状态是否收敛”“回答质量各维度是否达标”“采样生成下可用回答概率是否提升”。
+
+![训练指标](assets/README/swanlab-training-metrics.png)
+
 ### SFT Benchmark：自建指令评测与 LLM-as-Judge
 
 为了更直接观察 SFT 后模型的基础对话能力，项目额外构建了一个轻量级自建 SFT Benchmark。该 Benchmark 不追求覆盖所有复杂知识场景，而是聚焦小模型最基础、最容易暴露问题的交互能力：回答是否自然、是否符合事实、是否真正理解并执行了用户指令。
@@ -319,16 +331,6 @@ SFT 阶段训练曲线如下，可以看到 loss 在微调早期快速下降，�
 最终综合指标通过 `mean_avg3` 和 `mean_pass3` 汇总，其中 `avg3` 表示 3 个候选回答的平均通过率，`pass3` 表示 3 个候选回答中至少有 1 个通过的比例，更适合观察小模型在采样生成场景下的可用回答概率。
 
 ![SFT Judge 综合指标](assets/README/sft-judge-mean-score.png)
-
-## 评测与实验结果 📊
-
-项目在预训练和 SFT 阶段均设计了评测闭环：
-
-- 预训练阶段：使用中文因果推断/逻辑推理 Benchmark 评估模型基础理解能力。
-- SFT 阶段：使用自建 `benchmark/mini_bench` 抽样生成回答，并结合 DeepSeek Judge 进行对话质量评估。
-- 训练过程：使用 SwanLab 记录 loss、learning rate、ETA 和评测指标，便于观察收敛趋势。
-
-![训练指标](assets/README/swanlab-training-metrics.png)
 
 核心实验结果：
 
