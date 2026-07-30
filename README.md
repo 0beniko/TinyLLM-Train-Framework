@@ -8,7 +8,7 @@
 
 ## 项目概览 🚀
 
-知辰的目标是从零训练一个约 0.1B 参数规模的中文语言模型，使其具备基础中文语言建模、多轮对话和指令跟随能力。完整链路如下：
+知辰的目标是从零训练一个约 0.1B 参数规模的中文语言模型，使其具备基础中文语言建模、一次性对话和指令跟随能力。当前仓库负责预训练与普通 SFT；后续 CoT-SFT 和 GRPO 位于 [TinyAudit-GRPO](https://github.com/0beniko/TinyAudit-GRPO)。完整链路如下：
 
 ```text
 原始语料
@@ -17,8 +17,10 @@
   -> 预训练二进制样本构建
   -> Decoder-only Transformer 预训练
   -> 中文 Benchmark 评测
+  -> 单轮 SFT 数据筛选
   -> SFT 指令微调
-  -> 多轮对话验证
+  -> 单轮对话验证
+  -> TinyAudit-GRPO：CoT-SFT 与 GRPO
 ```
 
 ![训练流程](assets/README/training-pipeline.png)
@@ -210,9 +212,9 @@ torchrun --nproc_per_node=4 train/pretrain.py \
 
 ## SFT 指令微调 🎯
 
-SFT 阶段使用 2M+ 条指令微调数据，将预训练模型继续训练为具备中文多轮对话与指令跟随能力的模型。
+原始 SFT 数据包含 2,023,725 条对话。当前阶段只考虑一次性对话，因此不再把原始数据直接送入训练，而是先筛选为严格的一问一答，再将预训练模型继续训练为具备中文单轮对话与指令跟随能力的模型。
 
-SFT 数据格式为多轮对话：
+SFT 数据格式为单轮对话：
 
 ```json
 {
@@ -222,6 +224,45 @@ SFT 数据格式为多轮对话：
   ]
 }
 ```
+
+### 单轮数据筛选
+
+原始数据中混有多轮样本、重复问答、异常控制字符和超过训练窗口的长样本。对于监督数据，直接把所有样本截断到 512 tokens 可能截掉 assistant 答案尾部和 EOS，使模型学习到不完整回答。因此当前采用：
+
+- 只保留严格的一条 `user` 和一条 `assistant`；
+- 清除首尾空白；
+- 丢弃空文本、损坏字符和嵌入的对话控制 token；
+- 对 `(user, assistant)` 精确去重；
+- 使用项目 Tokenizer 计算完整样本长度；
+- 完整长度超过 512 tokens 时整条丢弃，不截断；
+- 短样本补齐到 512，padding 不参与 loss；
+- user 区域全部 mask，只计算 assistant 内容和 assistant EOS 的 loss。
+
+本次筛选统计记录在 `data/spongebob_sft_single_512.manifest.json`：
+
+| 项目 | 数量 |
+| --- | ---: |
+| 原始样本 | 2,023,725 |
+| 最终保留 | 1,576,371 |
+| 非单轮样本 | 418,511 |
+| 精确重复 | 25,522 |
+| 超过 512 tokens | 3,046 |
+| 损坏内容 | 270 |
+| 空内容 | 5 |
+| 保留比例 | 77.89% |
+| 平均长度 | 148.58 tokens |
+
+生成清洗后的数据：
+
+```bash
+python dataset/prepare_single_turn_sft.py \
+  --input data/spongebob_sft.jsonl \
+  --output data/spongebob_sft_single_512.jsonl \
+  --tokenizer tokenizer_15k \
+  --max-length 512
+```
+
+脚本同时生成 manifest，记录筛选规则、数量和输入输出 SHA-256。完整训练数据体积较大，可不提交到 Git；建议提交处理脚本与 manifest，使筛选口径可以复现。
 
 项目将对话编码为：
 
@@ -242,7 +283,7 @@ SFT 训练示例：
 
 ```bash
 torchrun --nproc_per_node=4 train/train_sft.py \
-  --data_path /path/to/sft_data.jsonl \
+  --data_path ./data/spongebob_sft_single_512.jsonl \
   --tokenizer_path ./tokenizer_15k \
   --from_weight /path/to/pretrain_768.pth \
   --save_dir ./out_sft \
@@ -257,23 +298,7 @@ torchrun --nproc_per_node=4 train/train_sft.py \
   --use_swanlab 1
 ```
 
-SFT 阶段训练曲线如下，可以看到 loss 在微调早期快速下降，并在后续阶段进入相对稳定区间；learning rate 使用 warmup 后余弦衰减，ETA 曲线反映了长时间训练过程中的耗时变化。
-
-![SFT 训练曲线](assets/README/sft-training-curves.png)
-
-如果启用 SFT 阶段生成式评估，可通过命令参数传入 Judge 模型配置。README 中不写入任何 API Key，实际使用时建议通过环境变量或本地安全配置传入密钥。
-
-## 评测与实验结果 📊
-
-项目在预训练和 SFT 阶段均设计了评测闭环：
-
-- 预训练阶段：使用中文因果推断/逻辑推理 Benchmark 评估模型基础理解能力。
-- SFT 阶段：使用自建 `benchmark/mini_bench` 抽样生成回答，并结合 DeepSeek Judge 进行对话质量评估。
-- 训练过程：使用 SwanLab 记录 loss、learning rate、ETA 和评测指标，便于观察收敛趋势。
-
-因此，SFT 训练曲线、三维 Judge 指标、综合 mean/pass 指标并不是单独的过程截图，而是知辰评测体系的一部分：它们分别对应“训练状态是否收敛”“回答质量各维度是否达标”“采样生成下可用回答概率是否提升”。
-
-![训练指标](assets/README/swanlab-training-metrics.png)
+训练参数仍集中在 `train/train_sft.py` 底部的 `argparse` 中。可以直接修改对应 `default=...` 后运行，也可以使用同名命令行参数临时覆盖。README 不写入任何真实 API Key；公开提交前必须清空脚本中的密钥。
 
 ### SFT Benchmark：自建指令评测与 LLM-as-Judge
 
@@ -324,6 +349,10 @@ Judge Prompt 如下：
 }
 ```
 
+SFT 阶段训练曲线如下，可以看到 loss 在微调早期快速下降，并在后续阶段进入相对稳定区间；learning rate 使用 warmup 后余弦衰减，ETA 曲线反映了长时间训练过程中的耗时变化。
+
+![SFT 训练曲线](assets/README/sft-training-curves.png)
+
 三维 Judge 指标用于分别观察模型回答的语言自然度、事实正确性和指令遵循能力：
 
 ![SFT Judge 三维指标](assets/README/sft-judge-rubric-metrics.png)
@@ -332,17 +361,28 @@ Judge Prompt 如下：
 
 ![SFT Judge 综合指标](assets/README/sft-judge-mean-score.png)
 
+## 评测与实验结果 📊
+
+项目在预训练和 SFT 阶段均设计了评测闭环：
+
+- 预训练阶段：使用中文因果推断/逻辑推理 Benchmark 评估模型基础理解能力。
+- SFT 阶段：使用自建 `benchmark/mini_bench` 抽样生成回答，并结合 DeepSeek Judge 进行对话质量评估。
+- 训练过程：使用 SwanLab 记录 loss、learning rate、ETA 和评测指标，便于观察收敛趋势。
+
+![训练指标](assets/README/swanlab-training-metrics.png)
+
 核心实验结果：
 
 | 指标 | 结果 |
 | --- | ---: |
 | 预训练数据规模 | 约 1.5B tokens |
-| SFT 数据规模 | 2M+ 条 |
+| 原始 SFT 数据 | 2,023,725 条 |
+| 筛选后单轮 SFT 数据 | 1,576,371 条 |
 | 训练 loss | 约 8 收敛至约 2.3 |
 | XCOPA 中文因果推断 Benchmark | 约 0.55 |
 | CLUE C3 中文阅读理解/逻辑推理 Benchmark | 约 0.48 |
 
-经过 SFT 后，知辰能够进行中文多轮对话，并对常见指令给出结构化回答。
+经过 SFT 后，知辰能够完成基础中文单轮对话，并对常见指令给出较完整的回答。
 
 ![SFT 对话效果](assets/README/sft-dialogue-demo.png)
 
@@ -370,7 +410,10 @@ python benchmark/mini_bench/eval.py
 ├── dataset/
 │   ├── preprocess_data.py        # 预训练数据预处理
 │   ├── pretrain_dataset.py       # memmap 预训练数据集
+│   ├── prepare_single_turn_sft.py # SFT 单轮筛选与 manifest
 │   └── sft_dataset.py            # assistant-only loss 的 SFT 数据集
+├── data/
+│   └── *.manifest.json           # 数据筛选规则、统计与哈希
 ├── benchmark/
 │   ├── evaluator.py              # Benchmark 评测工具
 │   ├── test_xcopa_improved.py    # XCOPA 中文因果推断评测
@@ -411,9 +454,21 @@ torchrun --nproc_per_node=4 train/pretrain.py \
 
 ### 4. 启动 SFT
 
+先生成严格单轮数据：
+
+```bash
+python dataset/prepare_single_turn_sft.py \
+  --input data/spongebob_sft.jsonl \
+  --output data/spongebob_sft_single_512.jsonl \
+  --tokenizer tokenizer_15k \
+  --max-length 512
+```
+
+再启动训练：
+
 ```bash
 torchrun --nproc_per_node=4 train/train_sft.py \
-  --data_path /path/to/sft_data.jsonl \
+  --data_path ./data/spongebob_sft_single_512.jsonl \
   --tokenizer_path ./tokenizer_15k \
   --from_weight /path/to/pretrain_768.pth \
   --save_dir ./out_sft \
@@ -437,6 +492,6 @@ python benchmark/test_xcopa_improved.py
 
 ## 总结 🧭
 
-知辰并不是简单调用现成大模型接口的应用项目，而是一个从底层组件到训练闭环完整搭建的中文大模型训练框架。项目以 15K BBPE Tokenizer 为统一编码基础，手写类 Qwen3 Dense 的 Decoder-only Transformer，并通过多卡预训练和 SFT 指令微调，让约 0.1B 参数级模型获得基础中文理解、因果推断、逻辑推理和多轮对话能力。
+知辰并不是简单调用现成大模型接口的应用项目，而是一个从底层组件到训练闭环完整搭建的中文大模型训练框架。项目以 15K BBPE Tokenizer 为统一编码基础，手写类 Qwen3 Dense 的 Decoder-only Transformer，并通过多卡预训练和经过筛选的单轮 SFT，让约 0.1B 参数级模型获得基础中文理解、因果推断、逻辑推理和一次性对话能力。CoT-SFT 与 GRPO 后训练由 [TinyAudit-GRPO](https://github.com/0beniko/TinyAudit-GRPO) 继续维护。
 
 该项目的价值在于：通过可读、可改、可训练的代码，把大模型训练中的核心机制拆解为可以验证的工程模块，完整展示从数据到模型、从训练到评测、从 loss 收敛到对话效果的端到端能力。
