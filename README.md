@@ -386,6 +386,20 @@ SFT 阶段训练曲线如下，可以看到 loss 在微调早期快速下降，�
 
 ![SFT 对话效果](assets/README/sft-dialogue-demo.png)
 
+### 交互效果展示 🖥️
+
+除离线 Benchmark 外，项目还提供了本地命令行对话入口，用于验证模型权重、Tokenizer、推理设备和对话模板是否能够完整串联。启动时会依次加载知辰 Tokenizer、初始化 0.1B 模型结构、载入 SFT 权重，并进入单轮对话模式。
+
+<p align="center">
+  <img src="assets/README/zhichen-cli-startup.png" alt="知辰大模型启动界面" width="760">
+</p>
+
+在交互验证中，模型能够围绕自我介绍、城市美食推荐等开放问题生成连续回答。该截图与上方 SFT Judge 曲线共同构成 SFT 后的效果展示：曲线用于量化评估，终端样例用于直观看到回答形态。
+
+<p align="center">
+  <img src="assets/README/sft-evaluation-transcript.png" alt="SFT 评测与对话展示" width="900">
+</p>
+
 评测相关入口：
 
 ```bash
@@ -393,6 +407,25 @@ python eval.py
 python benchmark/test_xcopa_improved.py
 python benchmark/mini_bench/eval.py
 ```
+
+## 图片资产分布 🖼️
+
+README 中的图片统一放在 `assets/README/` 下，并使用英文语义化文件名，避免中文路径或空格导致 GitHub 渲染异常。图片按展示位置分布如下：
+
+| 展示位置 | 文件 | 原始尺寸 | 文件大小 |
+| --- | --- | ---: | ---: |
+| 项目概览：训练全链路 | `assets/README/training-pipeline.png` | 1190 x 1322 | 1.34 MB |
+| 整体架构：模型结构 | `assets/README/model-architecture.png` | 1036 x 1519 | 1.05 MB |
+| 预训练流程：数据分布 | `assets/README/pretrain-data-distribution.png` | 1448 x 1086 | 1.15 MB |
+| 训练工程优化：学习率调度 | `assets/README/learning-rate-schedule.png` | 646 x 716 | 39.5 KB |
+| 训练工程优化：checkpoint 终端 | `assets/README/training-checkpoint-terminal.png` | 2888 x 1850 | 856.9 KB |
+| SFT Benchmark：训练曲线 | `assets/README/sft-training-curves.png` | 2350 x 642 | 110.9 KB |
+| SFT Benchmark：三维 Judge 指标 | `assets/README/sft-judge-rubric-metrics.png` | 2272 x 1182 | 174.0 KB |
+| SFT Benchmark：综合 mean/pass 指标 | `assets/README/sft-judge-mean-score.png` | 1616 x 634 | 67.1 KB |
+| 评测与实验结果：SwanLab 指标 | `assets/README/swanlab-training-metrics.png` | 1810 x 722 | 107.4 KB |
+| 评测与实验结果：SFT 对话效果 | `assets/README/sft-dialogue-demo.png` | 1280 x 464 | 344.6 KB |
+| 交互效果展示：模型启动界面 | `assets/README/zhichen-cli-startup.png` | 1402 x 894 | 166.3 KB |
+| 交互效果展示：SFT 评测输出 | `assets/README/sft-evaluation-transcript.png` | 1742 x 530 | 334.2 KB |
 
 ## 项目结构 🗂️
 
