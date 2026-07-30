@@ -408,6 +408,79 @@ python benchmark/test_xcopa_improved.py
 python benchmark/mini_bench/eval.py
 ```
 
+## CoT-SFT 与 GRPO 后训练 🧠
+
+完成普通 SFT 后，可将兼容权重交给
+[TinyAudit-GRPO](https://github.com/0beniko/TinyAudit-GRPO) 继续进行 CoT-SFT 与
+GRPO 后训练。两个仓库共用 Tokenizer 和模型结构，职责划分如下：
+
+```text
+TinyLLM-Train-Framework
+  └─ 预训练 → 普通单轮 SFT
+                  ↓
+TinyAudit-GRPO
+  └─ CoT 数据清洗 → CoT-SFT → 混合奖励 GRPO → 独立评测
+```
+
+<p align="center">
+  <img src="assets/README/post-training/model-interface.png" alt="知辰大模型启动界面" width="82%">
+</p>
+
+<p align="center"><sub>加载 CoT-SFT 权重后的知辰单轮对话界面。</sub></p>
+
+### CoT-SFT 训练与效果
+
+CoT-SFT 只对 assistant 区域计算 loss，并使用经过格式、长度、重复和身份过滤的单轮
+`<think>...</think>` 数据。训练曲线采用通栏展示，两张生成案例采用等宽双栏，便于
+在桌面端对比，同时保持移动端可读性。
+
+<p align="center">
+  <img src="assets/README/post-training/cot-sft-training-curves.png" alt="CoT-SFT 训练曲线" width="96%">
+</p>
+
+<p align="center"><sub>CoT-SFT 的 loss、learning rate 与 ETA；第二轮开始时 ETA 会重新估算。</sub></p>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/README/post-training/cot-sft-dialogue-1.png" alt="CoT-SFT 晚餐建议案例" width="100%">
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/README/post-training/cot-sft-dialogue-2.png" alt="CoT-SFT 北京美食案例" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>开放建议与结构化回答</sub></td>
+    <td align="center"><sub>常识问答与列表生成</sub></td>
+  </tr>
+</table>
+
+身份数据用于稳定模型名称、开发者、学校与参数规模等基础事实：
+
+<p align="center">
+  <img src="assets/README/post-training/identity-dialogue.png" alt="知辰大模型身份识别案例" width="96%">
+</p>
+
+### GRPO 效果
+
+GRPO 使用本地确定性奖励处理可验证任务，并仅对少量开放任务调用组内 Judge。以下截图
+用于定性观察推理格式、信息组织和指令遵循；正式权重选择仍应以独立验证集为准。
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/README/post-training/grpo-dialogue-1.png" alt="GRPO 北京美食案例" width="100%">
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/README/post-training/grpo-dialogue-2.png" alt="GRPO 周末放松建议案例" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>常识信息组织</sub></td>
+    <td align="center"><sub>日常建议与指令遵循</sub></td>
+  </tr>
+</table>
+
 ## 图片资产分布 🖼️
 
 README 中的图片统一放在 `assets/README/` 下，并使用英文语义化文件名，避免中文路径或空格导致 GitHub 渲染异常。图片按展示位置分布如下：
@@ -426,6 +499,13 @@ README 中的图片统一放在 `assets/README/` 下，并使用英文语义化�
 | 评测与实验结果：SFT 对话效果 | `assets/README/sft-dialogue-demo.png` | 1280 x 464 | 344.6 KB |
 | 交互效果展示：模型启动界面 | `assets/README/zhichen-cli-startup.png` | 1402 x 894 | 166.3 KB |
 | 交互效果展示：SFT 评测输出 | `assets/README/sft-evaluation-transcript.png` | 1742 x 530 | 334.2 KB |
+| CoT-SFT：模型启动界面 | `assets/README/post-training/model-interface.png` | 1404 x 864 | 166.0 KB |
+| CoT-SFT：训练曲线 | `assets/README/post-training/cot-sft-training-curves.png` | 2000 x 712 | 94.7 KB |
+| CoT-SFT：晚餐建议 | `assets/README/post-training/cot-sft-dialogue-1.png` | 1764 x 1228 | 445.0 KB |
+| CoT-SFT：北京美食 | `assets/README/post-training/cot-sft-dialogue-2.png` | 1776 x 878 | 446.4 KB |
+| 身份数据：身份识别 | `assets/README/post-training/identity-dialogue.png` | 1878 x 174 | 52.4 KB |
+| GRPO：北京美食 | `assets/README/post-training/grpo-dialogue-1.png` | 1746 x 1046 | 380.6 KB |
+| GRPO：周末建议 | `assets/README/post-training/grpo-dialogue-2.png` | 1760 x 722 | 357.9 KB |
 
 ## 项目结构 🗂️
 
@@ -453,6 +533,7 @@ README 中的图片统一放在 `assets/README/` 下，并使用英文语义化�
 │   └── mini_bench/               # SFT 生成式评测样例
 ├── tokenizer_15k/                # 已训练 Tokenizer 文件
 └── assets/README/                # README 展示图片
+    └── post-training/            # CoT-SFT 与 GRPO 展示图片
 ```
 
 ## 快速开始 ⚡
